@@ -1,6 +1,12 @@
-package com.harunuyar.studentassistant.Scheduler;
+package com.harunuyar.studentassistant.Receiver;
 
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.widget.Toast;
+import com.harunuyar.studentassistant.Constants;
 import com.harunuyar.studentassistant.Notifier.Bildirim;
+import com.harunuyar.studentassistant.Notifier.BildirimNotifier;
 import com.harunuyar.studentassistant.Notifier.Notifier;
 import com.harunuyar.studentassistant.ÖsymHelper.Exam;
 import java.text.DateFormat;
@@ -8,56 +14,55 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.TimerTask;
 
 /**
- * Created by Harun on 25.01.2017.
+ * Created by Harun on 26.01.2017.
  */
 
-public class MyTimerTask extends TimerTask {
-
-    private Notifier notifier;
-    private ArrayList<Exam> al;
-
-    public MyTimerTask(Notifier notifier, ArrayList<Exam> al){
-        this.al = al;
-        this.notifier = notifier;
-    }
+public class BildirimReceiver extends BroadcastReceiver {
+    Notifier notifier;
+    ArrayList<Exam> examsToBeNotified;
 
     @Override
-    public void run(){
-        for (Exam e : al) {
+    public void onReceive(Context context, Intent intent) {
+
+        Constants.loadNotificationDetails(context);
+
+        notifier = new BildirimNotifier(context);
+        examsToBeNotified = new ArrayList<>();
+
+        examsToBeNotified.addAll(Constants.loadSelectedExams(context));
+        for (Exam e : Constants.loadUserCreatedExams(context)) {
+            if (e.isSelected()) {
+                examsToBeNotified.add(e);
+            }
+        }
+
+        String controlMessage = intent.getAction().equals(Constants.MANUAL_INTENT) ? "Manuel kontrol yapıldı.\n" : "Otomatik kontrol yapıldı.\n";
+        Toast.makeText(context, controlMessage + examsToBeNotified.size() + " sınav kontrol edildi.", Toast.LENGTH_SHORT).show();
+
+        for (Exam e : examsToBeNotified){
             notifyIfClose(e);
         }
-        System.out.println("Kontrol edildi.");
     }
 
-
-    public void notifyIfClose(Exam exam){
+    private void notifyIfClose(Exam exam){
         if (notifier == null)
             return;
 
-        try {
-            DateFormat dateFormat = new SimpleDateFormat("dd.MM.yyyy");
-            Date d1 = new SimpleDateFormat("dd.MM.yyyy").parse(dateFormat.format(new Date()));
-            Date dateExam = new SimpleDateFormat("dd.MM.yyyy").parse(exam.getSınavTarihi());
-            Date dateFirst = new SimpleDateFormat("dd.MM.yyyy").parse(exam.getBaşvuruTarihiFirst());
-            Date dateLast = new SimpleDateFormat("dd.MM.yyyy").parse(exam.getBaşvuruTarihiLast());
-            Date dateResult = new SimpleDateFormat("dd.MM.yyyy").parse(exam.getSonuçTarihi());
+        DateFormat dateFormat = new SimpleDateFormat("dd.MM.yyyy");
+        Date today = null;
 
-            long diffExam = dateExam.getTime() - d1.getTime();
+        try {
+            today = new SimpleDateFormat("dd.MM.yyyy").parse(dateFormat.format(new Date()));
+        } catch (ParseException e) { }
+
+        try {
+            Date dateExam = new SimpleDateFormat("dd.MM.yyyy").parse(exam.getSınavTarihi());
+            long diffExam = dateExam.getTime() - today.getTime();
             diffExam /= (24 * 60 * 60 * 1000);
 
-            long diffFirst = dateFirst.getTime() - d1.getTime();
-            diffFirst /= (24 * 60 * 60 * 1000);
-
-            long diffLast = dateLast.getTime() - d1.getTime();
-            diffLast /= (24 * 60 * 60 * 1000);
-
-            long diffResult = dateResult.getTime() - d1.getTime();
-            diffResult /= (24 * 60 * 60 * 1000);
-
-            if (diffExam == 1 && notifier.isaDayAgo()){
+            if (diffExam == 1 && Constants.NOTIFY_A_DAY_AGO){
                 String text = "Yarın sınavınız var!";
 
                 try {
@@ -68,7 +73,7 @@ public class MyTimerTask extends TimerTask {
                     System.out.println(ex.getMessage());
                 }
             }
-            else if (diffExam == 7 && notifier.isaWeekAgo()){
+            else if (diffExam == 7 && Constants.NOTIFY_A_WEEK_AGO){
                 String text = "Haftaya sınavınız var!";
 
                 try {
@@ -79,8 +84,15 @@ public class MyTimerTask extends TimerTask {
                     System.out.println(ex.getMessage());
                 }
             }
+        }
+        catch (ParseException ex) { }
 
-            if (diffFirst == 1 && notifier.isaDayAgo()){
+        try{
+            Date dateFirst = new SimpleDateFormat("dd.MM.yyyy").parse(exam.getBaşvuruTarihiFirst());
+            long diffFirst = dateFirst.getTime() - today.getTime();
+            diffFirst /= (24 * 60 * 60 * 1000);
+
+            if (diffFirst == 1 && Constants.NOTIFY_A_DAY_AGO){
                 String text = "Yarın sınav başvuruları başlıyor!";
 
                 try {
@@ -91,7 +103,7 @@ public class MyTimerTask extends TimerTask {
                     System.out.println(ex.getMessage());
                 }
             }
-            else if (diffFirst == 7 && notifier.isaWeekAgo())
+            else if (diffFirst == 7 && Constants.NOTIFY_A_WEEK_AGO)
             {
                 String text = "Haftaya sınav başvuruları başlıyor!";
 
@@ -103,8 +115,15 @@ public class MyTimerTask extends TimerTask {
                     System.out.println(ex.getMessage());
                 }
             }
+        }
+        catch (ParseException ex) { }
 
-            if (diffLast == 1 && notifier.isaDayAgo()){
+        try{
+            Date dateLast = new SimpleDateFormat("dd.MM.yyyy").parse(exam.getBaşvuruTarihiLast());
+            long diffLast = dateLast.getTime() - today.getTime();
+            diffLast /= (24 * 60 * 60 * 1000);
+
+            if (diffLast == 1 && Constants.NOTIFY_A_DAY_AGO){
                 String text = "Yarın sınav başvuruları sona eriyor!";
 
                 try {
@@ -115,7 +134,7 @@ public class MyTimerTask extends TimerTask {
                     System.out.println(ex.getMessage());
                 }
             }
-            else if (diffLast == 7 && notifier.isaWeekAgo())
+            else if (diffLast == 7 && Constants.NOTIFY_A_WEEK_AGO)
             {
                 String text = "Haftaya sınav başvuruları sona eriyor!";
 
@@ -127,8 +146,15 @@ public class MyTimerTask extends TimerTask {
                     System.out.println(ex.getMessage());
                 }
             }
+        }
+        catch (ParseException ex) { }
 
-            if (diffResult == 1 && notifier.isaDayAgo()){
+        try{
+            Date dateResult = new SimpleDateFormat("dd.MM.yyyy").parse(exam.getSonuçTarihi());
+            long diffResult = dateResult.getTime() - today.getTime();
+            diffResult /= (24 * 60 * 60 * 1000);
+
+            if (diffResult == 1 && Constants.NOTIFY_A_DAY_AGO){
                 String text = "Yarın sınav sonuçları açıklanıyor!";
 
                 try {
@@ -139,7 +165,7 @@ public class MyTimerTask extends TimerTask {
                     System.out.println(ex.getMessage());
                 }
             }
-            else if (diffResult == 7 && notifier.isaWeekAgo())
+            else if (diffResult == 7 && Constants.NOTIFY_A_WEEK_AGO)
             {
                 String text = "Haftaya sınav sonuçları açıklanıyor!";
 
@@ -152,8 +178,6 @@ public class MyTimerTask extends TimerTask {
                 }
             }
         }
-        catch (ParseException ex) {
-            System.out.println(ex.getMessage());
-        }
+        catch (ParseException ex) { }
     }
 }

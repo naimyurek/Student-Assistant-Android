@@ -1,15 +1,19 @@
 package com.harunuyar.studentassistant;
 
+import android.app.Dialog;
 import android.content.Intent;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
+import android.widget.CheckBox;
+import android.widget.EditText;
+import android.widget.ImageButton;
 import android.widget.ListView;
+import android.widget.TextView;
 import android.widget.Toast;
-import com.harunuyar.studentassistant.CsvHelper.CsvReader;
-import com.harunuyar.studentassistant.CsvHelper.CsvWriter;
-import com.harunuyar.studentassistant.ÖsymHelper.CustomTask;
+import com.harunuyar.studentassistant.Receiver.BildirimReceiver;
+import com.harunuyar.studentassistant.ÖsymHelper.ÖsymTask;
 import com.harunuyar.studentassistant.ÖsymHelper.Exam;
 import com.harunuyar.studentassistant.ÖsymHelper.ÖsymAdapter;
 import java.io.IOException;
@@ -17,55 +21,28 @@ import java.util.ArrayList;
 
 public class MainActivity extends AppCompatActivity {
 
-    private ArrayList<Exam> allExams, selectedExams;
     private ListView listView;
-    private Button buttonListele, buttonKaydet;
+    private Button buttonListele;
+    private ImageButton buttonHelp, buttonAdd, buttonCheck, buttonSettings;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        Constants.setStatusBarColor(getWindow());
+
         listView = (ListView) findViewById(R.id.listView);
         buttonListele = (Button) findViewById(R.id.buttonListele);
-        buttonKaydet = (Button) findViewById(R.id.buttonKaydet);
+        buttonHelp = (ImageButton) findViewById(R.id.helpButton);
+        buttonAdd = (ImageButton) findViewById(R.id.addButton);
+        buttonCheck = (ImageButton) findViewById(R.id.checkButton);
+        buttonSettings = (ImageButton) findViewById(R.id.settingsButton);
 
-        listSelectedExams();
+        Constants.listSavedExams(this, listView);
+
         setOnClickListeners();
-
-        startService();
-    }
-
-    public void startService() {
-        startService(new Intent(getBaseContext(), StudentAssistantService.class));
-    }
-
-    public void stopService() {
-        stopService(new Intent(getBaseContext(), StudentAssistantService.class));
-    }
-
-    private void listSelectedExams(){
-        selectedExams = new ArrayList<>();
-
-        try {
-            CsvReader csvReader = new CsvReader("sinavlar.csv", this);
-
-            String[] s;
-
-            while ((s = csvReader.readNext()) != null) {
-                Exam e = new Exam(s[0], s[1], s[2], s[3], s[4]);
-                e.setSelected(true);
-                selectedExams.add(e);
-            }
-        }
-        catch (Exception ex) {
-            Toast.makeText(MainActivity.this, "Hoşgeldiniz.", Toast.LENGTH_SHORT).show();
-        }
-        allExams = new ArrayList<>();
-        allExams.addAll(selectedExams);
-
-        ÖsymAdapter adapter = new ÖsymAdapter(MainActivity.this, allExams);
-        listView.setAdapter(adapter);
-        listView.setTextFilterEnabled(true);
+        Constants.setScheduler(this);
     }
 
     private void setOnClickListeners(){
@@ -73,19 +50,25 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onClick(View v) {
                 try {
-                    CustomTask task = new CustomTask();
-                    allExams = task.execute().get();
+                    ÖsymTask task = new ÖsymTask();
+                    ArrayList<Exam> ösymExams = task.execute().get();
 
-                    for (Exam e : selectedExams){
-                        for (Exam e2 : allExams){
-                            if (e.equals(e2)){
-                                e2.setSelected(true);
+                    if (ösymExams == null)
+                        throw new Exception("Bağlantı sorunu.");
+
+                    ArrayList<Exam> al = Constants.loadUserCreatedExams(MainActivity.this);
+                    al.addAll(ösymExams);
+
+                    for (Exam aSelectedExam : Constants.loadSelectedExams(MainActivity.this)){
+                        for (Exam examInTheList : al){
+                            if (aSelectedExam.equals(examInTheList)){
+                                examInTheList.setSelected(true);
                                 break;
                             }
                         }
                     }
 
-                    ÖsymAdapter adapter = new ÖsymAdapter(MainActivity.this, allExams);
+                    ÖsymAdapter adapter = new ÖsymAdapter(MainActivity.this, al);
                     listView.setAdapter(adapter);
                     listView.setTextFilterEnabled(true);
                 }
@@ -95,35 +78,139 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        buttonKaydet.setOnClickListener(new View.OnClickListener() {
+        buttonHelp.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                allExams = ((ÖsymAdapter) listView.getAdapter()).getArrayList();
-                selectedExams = new ArrayList<>();
+                Intent intent = new Intent(getBaseContext(), HelpActivity.class);
+                startActivity(intent);
+            }
+        });
 
-                try {
-                    CsvWriter csvWriter = new CsvWriter("sinavlar.csv",
-                            new String[]{"Sınav Adı", "Sınav Tarihi", "İlk Başvuru", "Son Başvuru", "Sonuç Tarihi"},
-                            MainActivity.this);
-                    for (Exam e : allExams) {
-                        if (e.isSelected()) {
-                            selectedExams.add(e);
+        buttonAdd.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                final ÖsymAdapter adapter = (ÖsymAdapter) listView.getAdapter();
+                final ArrayList<Exam> allExams = adapter.getArrayList();
+
+                final Dialog dialog = new Dialog(MainActivity.this);
+                dialog.setContentView(R.layout.exam_dialog);
+
+                Button button2 = (Button) dialog.findViewById(R.id.button2);
+                Button button3 = (Button) dialog.findViewById(R.id.button3);
+                TextView title = (TextView) dialog.findViewById(R.id.alertTitle);
+                final EditText ad = (EditText) dialog.findViewById(R.id.nameEditText);
+                final EditText first = (EditText) dialog.findViewById(R.id.FirstEditText);
+                final EditText last = (EditText) dialog.findViewById(R.id.LastEditText);
+                final EditText tarih = (EditText) dialog.findViewById(R.id.sınavEditText);
+                final EditText sonuç = (EditText) dialog.findViewById(R.id.sonuçEditText);
+
+                button2.setText("EKLE");
+                button3.setText("İPTAL");
+                title.setText("Sınav Ekle");
+                button2.setVisibility(View.VISIBLE);
+                button3.setVisibility(View.VISIBLE);
+                title.setVisibility(View.VISIBLE);
+
+                button2.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        if (!ad.getText().toString().equals("")) {
+                            Exam exam = new Exam(ad.getText().toString(),
+                                    first.getText().toString(),
+                                    last.getText().toString(),
+                                    tarih.getText().toString(),
+                                    sonuç.getText().toString());
+
+                            exam.setUserCreated(true);
+                            exam.setSelected(false);
+
+                            boolean eklendi = false;
+                            for (int i=0; i<allExams.size(); i++){
+                                if (!allExams.get(i).isUserCreated()){
+                                    allExams.add(i, exam);
+                                    eklendi = true;
+                                    break;
+                                }
+                            }
+                            if (!eklendi){
+                                allExams.add(allExams.size(), exam);
+                            }
+
+                            try {
+                                Constants.saveUserCreatedExams(MainActivity.this, allExams);
+                            } catch (IOException e) { }
+
+                            adapter.notifyDataSetChanged();
+
+                            dialog.dismiss();
+                        }
+                        else{
+                            Toast.makeText(MainActivity.this, "Sınav adı boş bırakılamaz.", Toast.LENGTH_SHORT).show();
                         }
                     }
+                });
 
-                    for (Exam e : selectedExams){
-                        csvWriter.write(new String[]{e.getAd(), e.getSınavTarihi(), e.getBaşvuruTarihiFirst(),
-                                        e.getBaşvuruTarihiLast(), e.getSonuçTarihi()}, MainActivity.this);
+                button3.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        dialog.dismiss();
                     }
-                    csvWriter.close();
-                    Toast.makeText(MainActivity.this, "Seçilen sınavlar kaydedildi.", Toast.LENGTH_SHORT).show();
+                });
 
-                } catch (IOException e) {
-                    Toast.makeText(MainActivity.this, e.toString(), Toast.LENGTH_SHORT).show();
-                }
+                dialog.show();
+            }
+        });
 
-                stopService();
-                startService();
+        buttonCheck.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                new BildirimReceiver().onReceive(MainActivity.this, new Intent(Constants.MANUAL_INTENT));
+            }
+        });
+
+        buttonSettings.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Constants.loadNotificationDetails(MainActivity.this);
+
+                final Dialog dialog = new Dialog(MainActivity.this);
+                dialog.setContentView(R.layout.settings_dialog);
+
+                Button button2 = (Button) dialog.findViewById(R.id.button2);
+                Button button3 = (Button) dialog.findViewById(R.id.button3);
+                TextView title = (TextView) dialog.findViewById(R.id.alertTitle);
+                final CheckBox checkBoxDay = (CheckBox) dialog.findViewById(R.id.checkBoxDay);
+                final CheckBox checkBoxWeek = (CheckBox) dialog.findViewById(R.id.checkBoxWeek);
+
+                button2.setText("KAYDET");
+                button3.setText("İPTAL");
+                title.setText("Ayarlar");
+                checkBoxDay.setChecked(Constants.NOTIFY_A_DAY_AGO);
+                checkBoxWeek.setChecked(Constants.NOTIFY_A_WEEK_AGO);
+                button2.setVisibility(View.VISIBLE);
+                button3.setVisibility(View.VISIBLE);
+                title.setVisibility(View.VISIBLE);
+
+                button2.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        try {
+                            Constants.saveNotificationDetails(MainActivity.this, checkBoxDay.isChecked(), checkBoxWeek.isChecked());
+                            dialog.dismiss();
+                        } catch (IOException e) {
+                            Toast.makeText(MainActivity.this, "Ayarlar kaydedilemedi.", Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                });
+
+                button3.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        dialog.dismiss();
+                    }
+                });
+
+                dialog.show();
             }
         });
     }
